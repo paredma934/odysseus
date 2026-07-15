@@ -2,6 +2,12 @@
 
 A responsive React + TypeScript command center that combines a restrained Atlas-style system UI with the animated JARVIS intelligence core, agent activity, Odysseus commands, and opt-in wake-word voice control.
 
+## Integrated Odysseus launch
+
+Mission Control is built into `../static/mission-control` and served by the main Odysseus application at `/`. The complete classic workspace remains available from the **Workspace** navigation item or directly at `/workspace`.
+
+The integrated build uses the authenticated same-origin Odysseus API. It reuses the most recently selected workspace session, falls back to the first available session, and asks the operator to create a model session in `/workspace` when none exists.
+
 ## Install and run
 
 ```bash
@@ -27,11 +33,12 @@ When either Picovoice setting is absent, Mission Control clearly identifies and 
 ```dotenv
 VITE_PICOVOICE_ACCESS_KEY=
 VITE_JARVIS_WAKEWORD_MODEL_PATH=/wakewords/jarvis.ppn
-VITE_ODYSSEUS_API_URL=http://localhost:7860
-VITE_ODYSSEUS_WS_URL=ws://localhost:7860
+VITE_ODYSSEUS_API_URL=
+VITE_ODYSSEUS_WS_URL=
+VITE_ODYSSEUS_SESSION_ID=
 ```
 
-Commands are posted as `{ "message": "..." }` to `${VITE_ODYSSEUS_API_URL}/api/chat`. The response adapter accepts `response`, `message`, or `content` string fields so it can sit in front of the existing Odysseus service without UI coupling.
+Commands are posted to `${VITE_ODYSSEUS_API_URL}/api/chat` using the current Odysseus session. Leave the API URL empty for the integrated same-origin installation. `VITE_ODYSSEUS_SESSION_ID` can pin Mission Control to a dedicated session when desired.
 
 ## Orb states
 

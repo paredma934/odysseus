@@ -1,2 +1,2 @@
-const icons=['⌁','◎','≡','◫']
+const icons=['⌁','◎','≡','◫','↗']
 export function NavigationDock({items,active,onSelect}:{items:string[];active:string;onSelect:(item:string)=>void}){return <nav className="nav-dock" aria-label="Mission control navigation">{items.map((item,index)=><button key={item} className={active===item?'active':''} onClick={()=>onSelect(item)} aria-label={item} aria-current={active===item?'page':undefined}><span>{icons[index]}</span><small>{item}</small></button>)}</nav>}

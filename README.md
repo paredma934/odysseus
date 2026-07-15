@@ -34,7 +34,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7000` when the containers are healthy. The first admin password is printed in `docker compose logs odysseus`.
+Open `http://localhost:7000` when the containers are healthy. JARVIS Mission Control is the launch screen; the complete Odysseus workspace remains available at `http://localhost:7000/workspace`. The first admin password is printed in `docker compose logs odysseus`.
 
 Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration live in the [setup guide](docs/setup.md).
 

@@ -861,6 +861,13 @@ app.include_router(setup_companion_routes())
 
 @app.get("/")
 async def serve_index(request: Request):
+    mission_control_path = abs_join(BASE_DIR, "static/mission-control/index.html")
+    if os.path.exists(mission_control_path):
+        return serve_html_with_nonce(request, mission_control_path)
+    return await serve_workspace(request)
+
+@app.get("/workspace")
+async def serve_workspace(request: Request):
     static_path = abs_join(BASE_DIR, "static/index.html")
     if os.path.exists(static_path):
         return serve_html_with_nonce(request, static_path)
@@ -873,11 +880,11 @@ async def serve_index(request: Request):
 
 @app.get("/notes")
 async def serve_notes(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/calendar")
 async def serve_calendar(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 # Per-tool deep-link routes — all serve the same SPA, the JS auto-opens
 # the matching modal based on window.location.pathname. Each route also
@@ -885,27 +892,27 @@ async def serve_calendar(request: Request):
 # bookmarks render with tool-specific icons.
 @app.get("/cookbook")
 async def serve_cookbook(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/email")
 async def serve_email(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/memory")
 async def serve_memory(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/gallery")
 async def serve_gallery(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/tasks")
 async def serve_tasks(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/library")
 async def serve_library(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):

@@ -9,12 +9,20 @@ import { HeadquartersEcosystem } from './components/headquarters/HeadquartersEco
 import { useJarvis } from './state/JarvisContext'
 import './App.css'
 
-const navItems = ['Core', 'HQ Ecosystem', 'Mission log', 'Systems']
+const navItems = ['Core', 'HQ Ecosystem', 'Mission log', 'Systems', 'Workspace']
 
 function MissionControl() {
   const { state, setOrbState } = useJarvis()
   const [activeNav, setActiveNav] = useState('HQ Ecosystem')
   const [earthOpen, setEarthOpen] = useState(false)
+
+  const selectNavigation = (item:string) => {
+    if (item === 'Workspace') {
+      window.location.assign('/workspace')
+      return
+    }
+    setActiveNav(item)
+  }
 
   return (
     <main className="mission-control">
@@ -24,7 +32,7 @@ function MissionControl() {
         <div className="top-status"><span className="status-dot" /> ODYSSEUS ONLINE <time>10:42:18 CST</time></div>
       </header>
 
-      <NavigationDock items={navItems} active={activeNav} onSelect={setActiveNav} />
+      <NavigationDock items={navItems} active={activeNav} onSelect={selectNavigation} />
 
       {activeNav === 'HQ Ecosystem' ? <HeadquartersEcosystem onOpenCore={() => setActiveNav('Core')} /> :
         <section className="center-stage" aria-label="Jarvis intelligence core">

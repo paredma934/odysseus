@@ -1,0 +1,27 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #010306;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+  background: #010306;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(93, 224, 255, 0.28);
+  color: #fff;
+}

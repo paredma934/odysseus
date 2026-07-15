@@ -2,9 +2,9 @@
 
 A responsive React + TypeScript command center that combines a restrained Atlas-style system UI with the animated JARVIS intelligence core, agent activity, Odysseus commands, and opt-in wake-word voice control.
 
-## Integrated Odysseus launch
+## Standalone prototype
 
-Mission Control is built into `../static/mission-control` and served by the main Odysseus application at `/`. The complete classic workspace remains available from the **Workspace** navigation item or directly at `/workspace`.
+This TypeScript prototype remains available for component development. The main integrated 3D application lives in `../mission_control`, builds into `../static/mission-control`, and is served by Odysseus at `/`.
 
 The integrated build uses the authenticated same-origin Odysseus API. It reuses the most recently selected workspace session, falls back to the first available session, and asks the operator to create a model session in `/workspace` when none exists.
 

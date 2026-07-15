@@ -1,0 +1,2 @@
+.glass-panel{background:linear-gradient(135deg,rgba(15,28,42,.84),rgba(6,13,22,.76));border:1px solid var(--border);box-shadow:inset 0 1px rgba(255,255,255,.025),0 18px 60px rgba(0,0,0,.18);backdrop-filter:blur(18px)}
+.micro-status{display:inline-flex;align-items:center;gap:6px}.micro-status i{width:5px;height:5px;border-radius:50%;background:var(--muted)}.micro-status.active i{background:var(--success);box-shadow:0 0 8px var(--success)}

@@ -1,0 +1,1 @@
+export function AgentCharacter({name,angle}:{name:string;angle:number}){return <div className="agent-character" style={{'--angle':`${angle}deg`} as React.CSSProperties}><span>{name[0]}</span><small>{name}</small></div>}

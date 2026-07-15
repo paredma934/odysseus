@@ -1,0 +1,6 @@
+import { useSystemMetrics } from '../../hooks/useSystemMetrics'
+import { useJarvis } from '../../state/JarvisContext'
+import { MetricCard } from './MetricCard'
+import { StatusBadge } from './StatusBadge'
+import './atlas.css'
+export function SystemPanel(){const metrics=useSystemMetrics();const{state}=useJarvis();return <aside className="system-panel"><div className="panel-heading"><span>SYSTEM MATRIX</span><StatusBadge label="NOMINAL"/></div><MetricCard label="CPU LOAD" value={`${metrics.cpu}%`} detail="8 CORES / 3.2 GHZ"/><MetricCard label="MEMORY" value={`${metrics.memory}%`} detail="21.8 / 32 GB"/><MetricCard label="NETWORK" value={`${metrics.network}%`} detail="12 MS LATENCY" tone="green"/><div className="activity-list glass-panel"><div className="panel-heading"><span>ACTIVE AGENTS</span><b>03</b></div>{[['A','ATLAS','Analyzing'],['E','ECHO','Monitoring'],['O','ODYSSEUS',state.isConnectedToOdysseus?'Linked':'Offline']].map(([icon,name,status])=><div className="agent-row" key={name}><i>{icon}</i><span><b>{name}</b><small>{status}</small></span><em/></div>)}</div><div className="connection glass-panel"><span>ODYSSEUS LINK</span><StatusBadge label={state.isConnectedToOdysseus?'CONNECTED':'RETRY'} online={state.isConnectedToOdysseus}/><small>SECURE CHANNEL / AES-256</small></div></aside>}

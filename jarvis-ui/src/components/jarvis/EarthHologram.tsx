@@ -1,0 +1,1 @@
+export function EarthHologram(){return <div className="earth" aria-label="Earth hologram active"><div className="latitude lat-a"/><div className="latitude lat-b"/><div className="longitude long-a"/><div className="longitude long-b"/><span className="continent continent-a"/><span className="continent continent-b"/><b>GLOBAL LINK</b></div>}

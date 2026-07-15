@@ -1,0 +1,2 @@
+import { useEffect,useState } from 'react'
+export function useSystemMetrics(){const [metrics,setMetrics]=useState({cpu:32,memory:68,network:92});useEffect(()=>{const timer=window.setInterval(()=>setMetrics(current=>({cpu:Math.max(18,Math.min(78,current.cpu+Math.round(Math.random()*8-4))),memory:Math.max(48,Math.min(82,current.memory+Math.round(Math.random()*4-2))),network:Math.max(75,Math.min(99,current.network+Math.round(Math.random()*6-3)))})),2400);return()=>window.clearInterval(timer)},[]);return metrics}

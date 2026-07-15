@@ -714,6 +714,10 @@ app.include_router(setup_embedding_routes())
 from routes.model_routes import setup_model_routes
 app.include_router(setup_model_routes(model_discovery))
 
+# Local JARVIS model router diagnostics (covered by the existing API auth middleware)
+from routes.jarvis_model_routes import setup_jarvis_model_routes
+app.include_router(setup_jarvis_model_routes())
+
 # GitHub Copilot device-flow login
 from routes.copilot_routes import setup_copilot_routes
 app.include_router(setup_copilot_routes())
@@ -760,6 +764,11 @@ app.include_router(setup_task_routes(task_scheduler))
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))
+
+# BloFin connector for Vega. Read-only account access and public market data;
+# no exchange order-placement route is exposed.
+from routes.blofin_routes import setup_blofin_routes
+app.include_router(setup_blofin_routes())
 
 # Calendar (CalDAV)
 from routes.calendar_routes import setup_calendar_routes

@@ -38,6 +38,12 @@ Open `http://localhost:7000` when the containers are healthy. JARVIS Mission Con
 
 Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration live in the [setup guide](docs/setup.md).
 
+### Local JARVIS model routing
+
+For memory-constrained Apple Silicon systems, Odysseus can route local Ollama work without changing the existing chat or agent architecture. Conversation and commands use `llama3.2:3b`, coding uses `qwen2.5-coder:3b`, difficult planning uses `deepseek-r1:1.5b`, and short/low-memory requests use `gemma2:2b` when it is installed. The router discovers installed models, safely falls back, streams responses, serializes local inference, and unloads the prior model when switching.
+
+See [Apple Silicon JARVIS routing](docs/setup.md#jarvis-ollama-routing-for-8-gb-apple-silicon) for installation, configuration, diagnostics, and model commands.
+
 ## Features
 
 - **Chat + Agents** — local/API models, tools, MCP, files, shell, skills, and memory.

@@ -4,7 +4,7 @@ const DEFAULT_SESSION_ID = "7072e066-e3d5-41b4-8104-10eb3df078e0";
 const API_BASE = (import.meta.env.VITE_ODYSSEUS_API_BASE || (import.meta.env.DEV ? "/odysseus-api" : "")).replace(/\/$/, "");
 const OLLAMA_BASE = (import.meta.env.VITE_OLLAMA_API_BASE || (import.meta.env.DEV ? "/ollama-api" : "")).replace(/\/$/, "");
 const SESSION_ID = import.meta.env.VITE_ODYSSEUS_SESSION_ID || DEFAULT_SESSION_ID;
-const MODEL_NAME = import.meta.env.VITE_ODYSSEUS_MODEL || "qwen3:4b-instruct";
+const MODEL_NAME = import.meta.env.VITE_ODYSSEUS_MODEL || "llama3.2:3b";
 
 const agentGuardrails = {
   vega: "You provide educational and paper-trading decision support only. Never promise profit, place a trade, or claim a market observation you did not receive. Include thesis, entry conditions, invalidation, risk, and what data is still needed.",
@@ -53,8 +53,7 @@ export async function checkLocalAI() {
     const modelResponse = await fetchWithTimeout("/api/tags", { headers: { Accept: "application/json" } }, 3500, OLLAMA_BASE);
     if (!modelResponse.ok) throw new LocalAIError(`Ollama health check returned ${modelResponse.status}.`, "MODEL_OFFLINE");
     const modelPayload = await modelResponse.json();
-    const installed = (modelPayload.models || []).some((candidate) => candidate.name === MODEL_NAME || candidate.model === MODEL_NAME);
-    if (!installed) throw new LocalAIError(`${MODEL_NAME} is not installed in Ollama.`, "MODEL_MISSING");
+    if (!(modelPayload.models || []).length) throw new LocalAIError("No compatible Ollama models are installed.", "MODEL_MISSING");
   }
   return {
     status: "online",
@@ -82,7 +81,7 @@ ${learningContext}
 
 OPERATING RULES:
 - Use prior lessons as evidence, not as guaranteed truth. Correct them when newer outcomes disagree.
-- Briefly explain your reasoning and uncertainty.
+- Give a concise conclusion and short structured rationale. Never reveal private chain-of-thought.
 - Never pretend that a tool, trade, publication, payment, scan, or file change happened.
 - End with one clear recommended next step.
 - ${guardrail}

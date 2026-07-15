@@ -487,6 +487,9 @@ def _ollama_api_root(url: str) -> str:
         return url[: -len("/generate")]
     if path.endswith("/api"):
         return url
+    if path == "/v1" or path.startswith("/v1/"):
+        root = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else url
+        return root.rstrip("/") + "/api"
     if path == "":
         return url + "/api"
     if _host_match(url, "ollama.com"):
@@ -617,6 +620,8 @@ def _build_ollama_payload(
     stream: bool = False,
     tools: Optional[List[Dict]] = None,
     num_ctx: Optional[int] = None,
+    keep_alive: Optional[str] = None,
+    suppress_reasoning: bool = False,
 ) -> Dict:
     """Build the JSON payload for Ollama's /api/chat endpoint.
 
@@ -645,6 +650,12 @@ def _build_ollama_payload(
         payload["options"] = options
     if tools:
         payload["tools"] = tools
+    if keep_alive:
+        payload["keep_alive"] = keep_alive
+    if suppress_reasoning:
+        # Ollama keeps private reasoning separate when supported. The stream
+        # parser also drops thinking deltas for routed reasoning requests.
+        payload["think"] = False
     return payload
 
 
@@ -1729,6 +1740,30 @@ def normalize_model_id(
             return a
     return None
 
+
+def _jarvis_route_candidate(url: str) -> bool:
+    """Route only local Ollama native or OpenAI-compatible endpoints."""
+    return _is_ollama_native_url(url) or _is_ollama_openai_compat_url(url)
+
+
+def _jarvis_route_sync(url: str, model: str, messages: List[Dict]):
+    if not _jarvis_route_candidate(url):
+        return None
+    from src.ollama_model_router import route_sync
+    return route_sync(model, messages, _ollama_api_root(url))
+
+
+async def _jarvis_route_async(url: str, model: str, messages: List[Dict]):
+    if not _jarvis_route_candidate(url):
+        return None
+    from src.ollama_model_router import route_async
+    return await route_async(model, messages, _ollama_api_root(url))
+
+
+def _strip_private_reasoning(text: str) -> str:
+    from src.text_helpers import strip_think
+    return strip_think(text or "", prose=False, prompt_echo=False)
+
 def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None, 
              timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None) -> str:
@@ -1761,6 +1796,13 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         messages_copy = non_sys
 
     provider = _detect_provider(url)
+    route_decision = _jarvis_route_sync(url, model, messages_copy)
+    if route_decision is not None and route_decision.task_type != "manual":
+        model = route_decision.selected_model
+        provider = "ollama"
+        h = _provider_headers(provider)
+        if isinstance(headers, dict):
+            h.update(headers)
     cache_key = _get_cache_key(url, model, messages_copy, temperature, max_tokens)
     cached_response = _get_cached_response(cache_key)
     if cached_response:
@@ -1773,9 +1815,13 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         payload = _build_anthropic_payload(model, messages_copy, temperature, max_tokens)
     elif provider == "ollama":
         target_url = _normalize_ollama_url(url)
+        routed = route_decision is not None and route_decision.task_type != "manual"
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
-            stream=False, num_ctx=get_context_length(url, model),
+            stream=False,
+            num_ctx=route_decision.num_ctx if routed else get_context_length(url, model),
+            keep_alive=route_decision.keep_alive if routed else None,
+            suppress_reasoning=bool(routed and route_decision.suppress_reasoning),
         )
     else:
         target_url = _normalize_openai_chat_url(url)
@@ -1796,6 +1842,10 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
     try:
+        started = time.time()
+        if route_decision is not None and route_decision.task_type != "manual":
+            from src.ollama_model_router import prepare_switch_sync
+            prepare_switch_sync(_ollama_api_root(url), model)
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
     except Exception as e:
@@ -1808,6 +1858,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             response = _parse_anthropic_response(data)
         elif provider == "ollama":
             response = _parse_ollama_response(data)
+            if route_decision is not None and route_decision.suppress_reasoning:
+                response = _strip_private_reasoning(response)
         else:
             msg = data["choices"][0]["message"]
             content = msg.get("content")
@@ -1820,6 +1872,11 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
                     response = text_part or msg.get("reasoning_content") or ""
             else:
                 response = content or msg.get("reasoning_content") or ""
+        if route_decision is not None and route_decision.task_type != "manual":
+            logger.info(
+                "[jarvis-router] completed agent=%s model=%s duration=%.2fs",
+                route_decision.agent, model, time.time() - started,
+            )
         _set_cached_response(cache_key, response)
         return response
     except Exception:
@@ -1921,6 +1978,11 @@ async def llm_call_async(
     else:
         messages_copy = non_sys
 
+    route_decision = await _jarvis_route_async(url, model, messages_copy)
+    if route_decision is not None and route_decision.task_type != "manual":
+        model = route_decision.selected_model
+        provider = "ollama"
+
     cache_key = _get_cache_key(url, model, messages_copy, temperature, max_tokens)
     cached_response = _get_cached_response(cache_key)
     if cached_response:
@@ -1980,9 +2042,13 @@ async def llm_call_async(
         h = {"Content-Type": "application/json"}
         if headers:
             h.update(headers)
+        routed = route_decision is not None and route_decision.task_type != "manual"
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
-            stream=False, num_ctx=get_context_length(url, model),
+            stream=False,
+            num_ctx=route_decision.num_ctx if routed else get_context_length(url, model),
+            keep_alive=route_decision.keep_alive if routed else None,
+            suppress_reasoning=bool(routed and route_decision.suppress_reasoning),
         )
     else:
         target_url = _normalize_openai_chat_url(url)
@@ -2018,6 +2084,9 @@ async def llm_call_async(
         start = time.time()
         try:
             async with _local_model_slot(target_url, model, workload):
+                if route_decision is not None and route_decision.task_type != "manual":
+                    from src.ollama_model_router import prepare_switch_async
+                    await prepare_switch_async(_ollama_api_root(url), model, client=_get_http_client())
                 note_model_activity(target_url, model)
                 client = _get_http_client()
                 r = await httpx_post_kimi_aware_async(client, target_url, h, json=payload, timeout=call_timeout)
@@ -2040,9 +2109,16 @@ async def llm_call_async(
                     response = _parse_anthropic_response(data)
                 elif provider == "ollama":
                     response = _parse_ollama_response(data)
+                    if route_decision is not None and route_decision.suppress_reasoning:
+                        response = _strip_private_reasoning(response)
                 else:
                     msg = data["choices"][0]["message"]
                     response = msg.get("content") or msg.get("reasoning_content") or ""
+                if route_decision is not None and route_decision.task_type != "manual":
+                    logger.info(
+                        "[jarvis-router] completed agent=%s model=%s duration=%.2fs",
+                        route_decision.agent, model, duration,
+                    )
                 _set_cached_response(cache_key, response)
                 return response
             except Exception:
@@ -2078,29 +2154,47 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                      tool_choice_none: bool = False, workload: str = "foreground"):
-    target_url = _stream_target_url(url)
-    async with _local_model_slot(target_url, model, workload):
-        async for chunk in _stream_llm_inner(
-            url,
-            model,
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            headers=headers,
-            timeout=timeout,
-            prompt_type=prompt_type,
-            tools=tools,
-            session_id=session_id,
-            tool_choice_none=tool_choice_none,
-        ):
-            yield chunk
+    route_decision = await _jarvis_route_async(url, model, messages)
+    routed = route_decision is not None and route_decision.task_type != "manual"
+    if routed:
+        model = route_decision.selected_model
+        target_url = _normalize_ollama_url(url)
+    else:
+        target_url = _stream_target_url(url)
+    started = time.time()
+    try:
+        async with _local_model_slot(target_url, model, workload):
+            if routed:
+                from src.ollama_model_router import prepare_switch_async
+                await prepare_switch_async(_ollama_api_root(url), model, client=_get_http_client())
+            async for chunk in _stream_llm_inner(
+                url,
+                model,
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                headers=headers,
+                timeout=timeout,
+                prompt_type=prompt_type,
+                tools=tools,
+                session_id=session_id,
+                tool_choice_none=tool_choice_none,
+                route_decision=route_decision,
+            ):
+                yield chunk
+    finally:
+        if routed:
+            logger.info(
+                "[jarvis-router] completed agent=%s model=%s duration=%.2fs",
+                route_decision.agent, model, time.time() - started,
+            )
 
 
 async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
                             max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
                             timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                             tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
-                            tool_choice_none: bool = False):
+                            tool_choice_none: bool = False, route_decision=None):
     """Stream LLM responses with improved error handling.
 
     Yields SSE chunks:
@@ -2110,6 +2204,9 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
       - data: [DONE]                       — end of stream
     """
     provider = _detect_provider(url)
+    routed = route_decision is not None and route_decision.task_type != "manual"
+    if routed:
+        provider = "ollama"
     messages_copy = _sanitize_llm_messages(messages)
 
     # Consolidate multiple system messages into one at the start.
@@ -2137,7 +2234,11 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             h.update(headers)
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
-            stream=True, tools=tools, num_ctx=get_context_length(url, model),
+            stream=True,
+            tools=tools,
+            num_ctx=route_decision.num_ctx if routed else get_context_length(url, model),
+            keep_alive=route_decision.keep_alive if routed else None,
+            suppress_reasoning=bool(routed and route_decision.suppress_reasoning),
         )
     elif provider == "chatgpt-subscription":
         target_url = _normalize_chatgpt_subscription_url(url)
@@ -2281,12 +2382,14 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                         continue
                     message = j.get("message") or {}
                     thinking = message.get("thinking") or ""
-                    if thinking:
+                    suppress_private = bool(routed and route_decision.suppress_reasoning)
+                    if thinking and not suppress_private:
                         yield _stream_delta_event(thinking, thinking=True)
                     content = message.get("content") or ""
                     if content:
                         for part, is_thinking in _harmony_router.feed(content):
-                            yield _stream_delta_event(part, thinking=is_thinking)
+                            if not (suppress_private and is_thinking):
+                                yield _stream_delta_event(part, thinking=is_thinking)
                     for tc in message.get("tool_calls") or []:
                         fn = tc.get("function") or {}
                         if fn.get("name"):
@@ -2297,7 +2400,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             })
                     if j.get("done"):
                         for part, is_thinking in _harmony_router.flush():
-                            yield _stream_delta_event(part, thinking=is_thinking)
+                            if not (suppress_private and is_thinking):
+                                yield _stream_delta_event(part, thinking=is_thinking)
                         if _ollama_tool_calls:
                             yield f'data: {json.dumps({"type": "tool_calls", "calls": _ollama_tool_calls})}\n\n'
                         if j.get("prompt_eval_count") is not None or j.get("eval_count") is not None:
@@ -2305,7 +2409,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                         yield "data: [DONE]\n\n"
                         return
                 for part, is_thinking in _harmony_router.flush():
-                    yield _stream_delta_event(part, thinking=is_thinking)
+                    if not (bool(routed and route_decision.suppress_reasoning) and is_thinking):
+                        yield _stream_delta_event(part, thinking=is_thinking)
                 yield "data: [DONE]\n\n"
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _cooled = _mark_host_dead(target_url)

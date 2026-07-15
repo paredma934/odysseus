@@ -71,6 +71,46 @@ ODYSSEUS_HOST=0.0.0.0 ./start-macos.sh
 The script also reads `.env` at startup, so `APP_BIND=0.0.0.0` and `APP_PORT`
 set there are picked up automatically without a command-line override each run.
 
+#### JARVIS Ollama routing for 8 GB Apple Silicon
+
+Install Ollama on macOS, then install the compact routing set:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen2.5-coder:3b
+ollama pull deepseek-r1:1.5b
+ollama pull gemma2:2b
+```
+
+`gemma2:2b` is optional. If it is absent, short requests fall back to the default model. Add these values to `.env` (they match `.env.example`):
+
+```dotenv
+OLLAMA_BASE_URL=http://localhost:11434
+JARVIS_DEFAULT_MODEL=llama3.2:3b
+JARVIS_CODER_MODEL=qwen2.5-coder:3b
+JARVIS_REASONING_MODEL=deepseek-r1:1.5b
+JARVIS_LIGHT_MODEL=gemma2:2b
+OLLAMA_KEEP_ALIVE=2m
+OLLAMA_NUM_CTX=4096
+```
+
+The router checks Ollama's `/api/tags` inventory before choosing a model. Coding, debugging, React, TypeScript, Python, and terminal-error requests go to Qwen Coder. Planning, architecture, multi-step analysis, and difficult troubleshooting go to DeepSeek. General conversation, summaries, voice commands, tool selection, and normal agent work go to Llama. Requests of eight words or fewer use Gemma when installed; set `JARVIS_LOW_MEMORY_MODE=true` to prefer it for all non-coding/non-reasoning work.
+
+Only managed local models are automatically routed. Explicit custom/cloud model choices remain untouched, and legacy `qwen2.5:3b` or `qwen3:4b-instruct` local settings enter the new fallback chain. Local inference is serialized, context is capped at 4096 tokens (2048 for light work), `keep_alive` defaults to two minutes, and the previous model is asked to unload before a different one loads. DeepSeek private reasoning is not returned; clients receive only its conclusion or structured summary.
+
+After signing in, open `GET /api/jarvis/models/health` to see connection state, installed and running models, configured defaults, missing recommended models, and the most recent routing decision. Server logs use the `[jarvis-router]` prefix and include the agent, selected model, reason, fallback, and request duration.
+
+Optional controls:
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `OLLAMA_LIGHT_NUM_CTX` | `2048` | Context cap for lightweight requests |
+| `JARVIS_LIGHT_MAX_WORDS` | `8` | Maximum request length eligible for the light model |
+| `JARVIS_LOW_MEMORY_MODE` | `false` | Prefer the light model for ordinary work |
+| `JARVIS_MODEL_ROUTING` | `true` | Enable centralized routing |
+| `JARVIS_MODEL_ROUTING_FORCE` | `false` | Route every local Ollama model choice; normally leave off |
+| `OLLAMA_UNLOAD_ON_SWITCH` | `true` | Ask Ollama to unload the previous managed model |
+
 Keep `AUTH_ENABLED=true` (the default) before binding outside loopback. Do not
 expose this port directly to the public internet. To build a clickable app wrapper:
 

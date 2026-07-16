@@ -23,7 +23,6 @@ function MissionControl() {
     }
     setActiveNav(item)
   }
-
   return (
     <main className="mission-control">
       <div className="ambient-grid" aria-hidden="true" />

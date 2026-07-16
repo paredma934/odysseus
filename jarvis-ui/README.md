@@ -7,7 +7,6 @@ A responsive React + TypeScript command center that combines a restrained Atlas-
 This TypeScript prototype remains available for component development. The main integrated 3D application lives in `../mission_control`, builds into `../static/mission-control`, and is served by Odysseus at `/`.
 
 The integrated build uses the authenticated same-origin Odysseus API. It reuses the most recently selected workspace session, falls back to the first available session, and asks the operator to create a model session in `/workspace` when none exists.
-
 ## Install and run
 
 ```bash

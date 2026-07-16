@@ -2,6 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const odysseusProxy = {
+  // The proxied login page uses same-origin /api/* requests. Keeping those
+  // calls on the Vite origin lets its HttpOnly session cookie authenticate
+  // Mission Control without disabling Odysseus security.
+  '/api': {
+    target: process.env.ODYSSEUS_TARGET || 'http://127.0.0.1:7860',
+    changeOrigin: true,
+  },
   '/odysseus-api': {
     target: process.env.ODYSSEUS_TARGET || 'http://127.0.0.1:7860',
     changeOrigin: true,

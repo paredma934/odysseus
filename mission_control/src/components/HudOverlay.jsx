@@ -48,6 +48,7 @@ export default function HudOverlay({ mode, agents, selectedAgent, focusedAgentId
           <button aria-label="Headquarters ecosystem map" data-short="MAP" className={mode === "ecosystem" ? "is-active" : ""} onClick={() => onModeChange("ecosystem")}>ECOSYSTEM</button>
           <button aria-label="Headquarters" data-short="HQ" className={mode === "world" && !rundownOpen ? "is-active" : ""} onClick={() => onModeChange("world")}>HEADQUARTERS</button>
           <button aria-label="Particle Earth" data-short="EARTH" className={mode === "earth" ? "is-active" : ""} onClick={() => onModeChange("earth")}>PARTICLE EARTH</button>
+          {localAI.status === "auth-required" && <button aria-label="Sign in to Odysseus" data-short="SIGN IN" className="is-active" onClick={() => window.location.assign("/odysseus-api/login")}>SIGN IN</button>}
           <button aria-label={voiceEnabled ? "Mute JARVIS voice" : "Enable JARVIS voice"} data-short={voiceEnabled ? "VOICE ON" : "MUTED"} className={`voice-toggle ${voiceEnabled ? "voice-on" : ""}`} onClick={onToggleVoice} title={`British male voice profile: ${voiceName}`}>VOICE {voiceEnabled ? "ON" : "MUTED"}</button>
         </nav>
       </header>

@@ -49,16 +49,34 @@ export async function checkLocalAI() {
   const response = await fetchWithTimeout("/api/health", { headers: { Accept: "application/json" } }, 3500);
   if (!response.ok) throw new LocalAIError(`Odysseus health check returned ${response.status}.`, "UNHEALTHY");
   const health = await response.json();
+  let activeModel = MODEL_NAME;
+  let modelDetail = "";
   if (OLLAMA_BASE) {
     const modelResponse = await fetchWithTimeout("/api/tags", { headers: { Accept: "application/json" } }, 3500, OLLAMA_BASE);
     if (!modelResponse.ok) throw new LocalAIError(`Ollama health check returned ${modelResponse.status}.`, "MODEL_OFFLINE");
     const modelPayload = await modelResponse.json();
-    if (!(modelPayload.models || []).length) throw new LocalAIError("No compatible Ollama models are installed.", "MODEL_MISSING");
+    const installedModels = (modelPayload.models || [])
+      .map((candidate) => String(candidate?.name || candidate?.model || "").trim())
+      .filter((name) => name && !/(embed|embedding|nomic|bge-|minilm)/i.test(name));
+    if (!installedModels.length) throw new LocalAIError("No compatible Ollama models are installed.", "MODEL_MISSING");
+    if (!installedModels.includes(MODEL_NAME)) {
+      activeModel = installedModels.find((name) => name === "qwen2.5:3b" || name === "qwen3:4b-instruct") || installedModels[0];
+      modelDetail = ` · ${MODEL_NAME} unavailable, using ${activeModel}`;
+    }
+  }
+  const authResponse = await fetchWithTimeout("/api/auth/status", { headers: { Accept: "application/json" } }, 3500);
+  if (authResponse.ok) {
+    const auth = await authResponse.json();
+    if (auth.configured && !auth.authenticated) {
+      const error = new LocalAIError("Sign in to Odysseus from Mission Control to enable agent commands.", "AUTH");
+      error.model = activeModel;
+      throw error;
+    }
   }
   return {
     status: "online",
-    detail: health.status === "healthy" ? "Odysseus reachable" : "Odysseus responding",
-    model: MODEL_NAME,
+    detail: `${health.status === "healthy" ? "Odysseus reachable" : "Odysseus responding"}${modelDetail}`,
+    model: activeModel,
     sessionId: SESSION_ID,
   };
 }
@@ -106,7 +124,7 @@ export async function runLocalAgent({ agent, command, operatorName, verifiedCont
   });
 
   if (response.status === 401 || response.status === 403) {
-    throw new LocalAIError("Odysseus requires you to sign in again at 127.0.0.1:7860.", "AUTH");
+    throw new LocalAIError("Sign in to Odysseus from Mission Control, then retry the command.", "AUTH");
   }
   if (response.status === 404) {
     throw new LocalAIError(`The configured Odysseus session ${SESSION_ID} was not found.`, "SESSION");

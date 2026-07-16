@@ -102,7 +102,7 @@ export default function App() {
         const status = await checkLocalAI();
         if (!disposed) setLocalAI(status);
       } catch (error) {
-        if (!disposed) setLocalAI((current) => ({ ...current, status: "offline", detail: error.message }));
+        if (!disposed) setLocalAI((current) => ({ ...current, status: error.code === "AUTH" ? "auth-required" : "offline", detail: error.message, model: error.model || current.model }));
       }
     };
 

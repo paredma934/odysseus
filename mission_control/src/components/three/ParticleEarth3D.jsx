@@ -47,7 +47,7 @@ function GraphHalo() {
   );
 }
 
-export default function ParticleEarth3D({ visible = true, jarvisState = "idle", onCoreActivate, onCoreDoubleActivate }) {
+export default function ParticleEarth3D({ visible = true, jarvisState = "sleeping", onCoreActivate, onCoreDoubleActivate }) {
   const earth = useRef();
   const points = useMemo(() => {
     const count = 2600;

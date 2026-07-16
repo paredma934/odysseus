@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import usePorcupineWakeWord from "../hooks/usePorcupineWakeWord";
 
 const wakePattern = /\bhey[\s,]+jarvis\b[,\s]*/i;
 const fatalRecognitionErrors = new Set(["not-allowed", "service-not-allowed", "audio-capture", "language-not-supported"]);
 
-export default function VoiceConsole({ jarvisState, lastResponse, speechActive, onCommand, onWake, onListeningChange }) {
+export default function VoiceConsole({ jarvisState, lastResponse, speechActive, onCommand, onWake, onListeningChange, onVoiceStatusChange }) {
   const [command, setCommand] = useState("");
   const [wakeArmed, setWakeArmed] = useState(false);
   const [recognitionActive, setRecognitionActive] = useState(false);
   const [wakeDetected, setWakeDetected] = useState(false);
   const [voiceError, setVoiceError] = useState("");
+  const [microphonePermission, setMicrophonePermission] = useState("prompt");
+  const [porcupinePaused, setPorcupinePaused] = useState(false);
   const inputRef = useRef();
   const recognitionRef = useRef();
   const recognitionCtorRef = useRef();
@@ -26,6 +29,18 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
   const transientFailuresRef = useRef(0);
   const nextRestartDelayRef = useRef(300);
   const lastDispatchRef = useRef({ text: "", time: 0 });
+  const wakeEngineRef = useRef("browser-fallback");
+
+  const porcupine = usePorcupineWakeWord({
+    enabled: wakeArmed,
+    paused: porcupinePaused || speechActive,
+    onWake: () => {
+      setPorcupinePaused(true);
+      openWakeWindow(false);
+    },
+  });
+
+  wakeEngineRef.current = porcupine.configured && porcupine.status !== "error" ? "porcupine" : "browser-fallback";
 
   function closeWakeWindow() {
     window.clearTimeout(wakeTimerRef.current);
@@ -52,6 +67,10 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
     window.clearTimeout(restartTimerRef.current);
     if (!wakeArmedRef.current || speechActiveRef.current || pauseForSpeechRef.current || document.visibilityState !== "visible") return;
     restartTimerRef.current = window.setTimeout(() => {
+      if (wakeEngineRef.current === "porcupine" && !wakeDetectedRef.current) {
+        setPorcupinePaused(false);
+        return;
+      }
       const SpeechRecognition = recognitionCtorRef.current;
       if (SpeechRecognition) beginRecognition(SpeechRecognition);
     }, delay);
@@ -214,6 +233,26 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
   }, [speechActive]);
 
   useEffect(() => {
+    if (!wakeArmed || porcupine.status !== "error") return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setVoiceError(`Porcupine could not start (${porcupine.error}). Browser wake fallback active.`);
+    if (!SpeechRecognition) return;
+    recognitionCtorRef.current = SpeechRecognition;
+    setPorcupinePaused(true);
+    scheduleRestartRef.current(250);
+  }, [porcupine.error, porcupine.status, wakeArmed]);
+
+  useEffect(() => {
+    onVoiceStatusChange?.({
+      enabled: wakeArmed,
+      active: wakeArmed && (recognitionActive || porcupine.status === "listening"),
+      permission: microphonePermission,
+      engine: wakeEngineRef.current,
+      error: voiceError || porcupine.error,
+    });
+  }, [microphonePermission, onVoiceStatusChange, porcupine.error, porcupine.status, recognitionActive, voiceError, wakeArmed]);
+
+  useEffect(() => {
     const focusCommand = (event) => {
       if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
         event.preventDefault();
@@ -241,7 +280,7 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
     };
   }, []);
 
-  function toggleWakeListener() {
+  async function toggleWakeListener() {
     if (wakeArmedRef.current) {
       wakeArmedRef.current = false;
       setWakeArmed(false);
@@ -251,11 +290,31 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
       window.clearTimeout(wakeBufferTimerRef.current);
       window.clearTimeout(restartTimerRef.current);
       abortRecognition();
+      setPorcupinePaused(true);
+      setMicrophonePermission("granted");
+      try { window.localStorage.setItem("jarvis.wakeWordEnabled", "false"); } catch { /* Session state remains available. */ }
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicrophonePermission("unsupported");
+      setVoiceError("Microphone access is unavailable in this browser. Type the command instead.");
+      inputRef.current?.focus();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicrophonePermission("granted");
+    } catch {
+      setMicrophonePermission("denied");
+      setVoiceError("Microphone access was not allowed. Enable it in browser settings, then try again.");
       return;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    if (!porcupine.configured && !SpeechRecognition) {
       setVoiceError("Wake-word recognition is unavailable in this browser. Type the command instead.");
       inputRef.current?.focus();
       return;
@@ -265,8 +324,10 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
     transientFailuresRef.current = 0;
     wakeArmedRef.current = true;
     setWakeArmed(true);
+    setPorcupinePaused(false);
     setVoiceError("");
-    beginRecognition(SpeechRecognition);
+    try { window.localStorage.setItem("jarvis.wakeWordEnabled", "true"); } catch { /* Session state remains available. */ }
+    if (!porcupine.configured && SpeechRecognition) beginRecognition(SpeechRecognition);
   }
 
   function submit(event) {
@@ -284,17 +345,21 @@ export default function VoiceConsole({ jarvisState, lastResponse, speechActive, 
       : wakeDetected
         ? "HEY JARVIS CONFIRMED · LISTENING"
         : wakeArmed
-          ? recognitionActive ? "HEY JARVIS · EXPERIMENTAL · ARMED" : "RECONNECTING WAKE LISTENER"
+          ? porcupine.status === "listening"
+            ? "HEY JARVIS · PORCUPINE · ARMED"
+            : recognitionActive
+              ? "HEY JARVIS · BROWSER FALLBACK · ARMED"
+              : "STARTING WAKE LISTENER"
           : "COMMAND LINK READY";
 
   return (
     <div className={`voice-console interactive ${wakeArmed ? "wake-armed" : ""}`}>
       <div className={`voice-wave ${wakeArmed ? "is-armed" : ""} ${wakeDetected || jarvisState === "speaking" ? "is-live" : ""}`} aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}</div>
-      <div className="voice-copy" aria-live="polite"><span>{stateLabel}</span><p>{voiceError || lastResponse || "Say Hey JARVIS or type a command."}</p></div>
+      <div className="voice-copy" aria-live="polite"><span>{stateLabel}</span><p>{voiceError || porcupine.error || lastResponse || "Say Hey JARVIS or type a command."}</p></div>
       <form onSubmit={submit}>
         <input ref={inputRef} value={command} onChange={(event) => setCommand(event.target.value)} placeholder={wakeDetected ? "Listening for your directive…" : "Say “Hey JARVIS” or type a command…"} aria-label="Command JARVIS" />
         <button type="submit" aria-label="Send command">SEND</button>
-        <button type="button" className={`mic-button ${wakeArmed ? "is-armed" : ""} ${wakeDetected ? "is-live" : ""}`} onClick={toggleWakeListener} aria-pressed={wakeArmed} aria-label={wakeArmed ? "Disable experimental Hey JARVIS wake word" : "Enable experimental Hey JARVIS wake word"} title={wakeArmed ? "Hey JARVIS is armed while this tab is open" : "Arm Hey JARVIS"}><span /></button>
+        <button type="button" className={`mic-button ${wakeArmed ? "is-armed" : ""} ${wakeDetected ? "is-live" : ""}`} onClick={() => void toggleWakeListener()} aria-pressed={wakeArmed} aria-label={wakeArmed ? "Disable Hey JARVIS wake word" : "Enable Hey JARVIS wake word and microphone"} title={wakeArmed ? `Hey JARVIS armed with ${wakeEngineRef.current}` : "Enable microphone and arm Hey JARVIS"}><span /></button>
       </form>
     </div>
   );

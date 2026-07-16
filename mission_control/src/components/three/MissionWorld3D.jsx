@@ -232,7 +232,7 @@ export default function MissionWorld3D({ visible, agents, activeAgentId, selecte
       <pointLight position={[0, -2.8, 4]} color="#9f4cff" intensity={1.1} distance={16} />
       <AmbientDataField />
       <HeadquartersFloor agents={agents} activeAgentId={activeAgentId} focusedAgentId={focusedAgentId} />
-      <group position={CORE_POSITION} scale={0.54}><JarvisCore3D state={jarvisState} position={[0, 0, 0]} onActivate={onCoreActivate} onDoubleActivate={onEarthMode} /></group>
+      <group position={CORE_POSITION} scale={0.64}><JarvisCore3D state={jarvisState} position={[0, 0, 0]} onActivate={onCoreActivate} onDoubleActivate={onEarthMode} /></group>
       {linkedAgent && <EnergyLink agent={linkedAgent} />}
       {agents.map((agent) => (
         <group key={agent.id}>

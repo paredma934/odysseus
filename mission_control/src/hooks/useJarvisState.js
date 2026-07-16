@@ -1,16 +1,15 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { isJarvisOrbState } from "../state/jarvisStates";
 
-export default function useJarvisState(){
+export default function useJarvisState(initialState = "sleeping") {
+  const [state, setInternalState] = useState(initialState);
 
-const [state,setState] = useState("idle");
+  const setState = useCallback((nextState) => {
+    setInternalState((current) => {
+      const resolved = typeof nextState === "function" ? nextState(current) : nextState;
+      return isJarvisOrbState(resolved) ? resolved : current;
+    });
+  }, []);
 
-
-return {
-
-state,
-
-setState
-
-};
-
+  return { state, setState };
 }

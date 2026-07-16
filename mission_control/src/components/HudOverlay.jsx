@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import AgentPortrait from "./AgentPortrait";
 import QuickRundown from "./QuickRundown";
 import BlofinPanel from "./BlofinPanel";
+import SystemMetricsPanel from "./SystemMetricsPanel";
+import { JARVIS_STATE_LABELS } from "../state/jarvisStates";
 
 const missionPhases = [
   ["COMMAND RECEIVED", 12],
@@ -10,7 +12,7 @@ const missionPhases = [
   ["REPORT PREPARED", 100],
 ];
 
-export default function HudOverlay({ mode, agents, selectedAgent, focusedAgentId, activeAgentId, jarvisState, currentTask, taskProgress, logs, voiceEnabled, voiceName, operatorName, rundownOpen, localAI, blofin, agentLearning, onRundown, onCloseRundown, onToggleVoice, onModeChange, onClearFocus, onSelectAgent, onRunAgent, onRefreshBlofin, onConnectBlofin, onDisconnectBlofin }) {
+export default function HudOverlay({ mode, agents, selectedAgent, focusedAgentId, activeAgentId, jarvisState, currentTask, taskProgress, logs, voiceEnabled, voiceName, voiceStatus, operatorName, rundownOpen, localAI, blofin, agentLearning, onRundown, onCloseRundown, onToggleVoice, onModeChange, onClearFocus, onSelectAgent, onRunAgent, onRefreshBlofin, onConnectBlofin, onDisconnectBlofin }) {
   const selectedActive = selectedAgent.id === activeAgentId;
   const selectedFocused = selectedAgent.id === focusedAgentId;
   const displayProgress = selectedActive ? Math.max(taskProgress, 12) : selectedAgent.readiness;
@@ -40,20 +42,21 @@ export default function HudOverlay({ mode, agents, selectedAgent, focusedAgentId
         </div>
         <div className={`core-status core-dial ${jarvisState}`} aria-live="polite">
           <i className={`status-orb ${jarvisState}`} />
-          <span>{jarvisState.toUpperCase()}</span>
+          <span>{JARVIS_STATE_LABELS[jarvisState] ?? jarvisState.toUpperCase()}</span>
           <small title={`${voiceName} · ${localAI.detail}`}>{activeAgentId ? `ROUTING TO ${activeAgentId.toUpperCase()}` : `LOCAL AI ${localAI.status.toUpperCase()} // ${localAI.model}`}</small>
         </div>
         <nav className="header-actions" aria-label="Mission Control views">
           <button aria-label="Operations overview" data-short="OPS" className={rundownOpen ? "is-active" : ""} onClick={onRundown}>OPERATIONS</button>
-          <button aria-label="Headquarters ecosystem map" data-short="MAP" className={mode === "ecosystem" ? "is-active" : ""} onClick={() => onModeChange("ecosystem")}>ECOSYSTEM</button>
-          <button aria-label="Headquarters" data-short="HQ" className={mode === "world" && !rundownOpen ? "is-active" : ""} onClick={() => onModeChange("world")}>HEADQUARTERS</button>
+          <button aria-label="Agent Headquarters" data-short="HQ" className={mode === "headquarters" && !rundownOpen ? "is-active" : ""} onClick={() => onModeChange("headquarters")}>HEADQUARTERS</button>
           <button aria-label="Particle Earth" data-short="EARTH" className={mode === "earth" ? "is-active" : ""} onClick={() => onModeChange("earth")}>PARTICLE EARTH</button>
           {localAI.status === "auth-required" && <button aria-label="Sign in to Odysseus" data-short="SIGN IN" className="is-active" onClick={() => window.location.assign("/odysseus-api/login")}>SIGN IN</button>}
           <button aria-label={voiceEnabled ? "Mute JARVIS voice" : "Enable JARVIS voice"} data-short={voiceEnabled ? "VOICE ON" : "MUTED"} className={`voice-toggle ${voiceEnabled ? "voice-on" : ""}`} onClick={onToggleVoice} title={`British male voice profile: ${voiceName}`}>VOICE {voiceEnabled ? "ON" : "MUTED"}</button>
         </nav>
       </header>
 
-      {mode === "world" && rundownOpen && (
+      {!rundownOpen && mode === "headquarters" && <SystemMetricsPanel localAI={localAI} activeAgentId={activeAgentId} agentCount={agents.length} voiceStatus={voiceStatus} />}
+
+      {mode === "headquarters" && rundownOpen && (
         <QuickRundown
           agents={agents}
           activeAgentId={activeAgentId}
@@ -149,7 +152,7 @@ export default function HudOverlay({ mode, agents, selectedAgent, focusedAgentId
       </section>}
 
       {!rundownOpen && <div className="scene-instruction">
-        {mode === "world" ? selectedFocused ? <><span>SELECTED CHARACTER VIEW // CLOSE PROFILE TO SEE THE FULL FIGURE</span><strong>{selectedAgent.name.toUpperCase()} // {selectedAgent.mythTitle.toUpperCase()}</strong></> : <><span>SELECT AN AGENT TO ENTER THEIR ROOM</span><strong>JARVIS HEADQUARTERS // OPERATIONS FLOOR</strong></> : mode === "ecosystem" ? <><span>SELECT A FACILITY TO INSPECT ITS AGENT NETWORK</span><strong>CONNECTED INTELLIGENCE ECOSYSTEM // LIVE</strong></> : <><span>DRAG TO ORBIT · VOICE LINK ACTIVE</span><strong>OBSIDIAN PARTICLE EARTH</strong></>}
+        {mode === "headquarters" ? <><span>SELECT A FACILITY TO VISIT ITS RESIDENT AGENTS</span><strong>ODYSSEUS AGENT HEADQUARTERS // ALL SYSTEMS HOME</strong></> : <><span>DRAG TO ORBIT · DOUBLE CLICK TO RETURN HOME</span><strong>OBSIDIAN PARTICLE EARTH</strong></>}
       </div>}
     </div>
   );

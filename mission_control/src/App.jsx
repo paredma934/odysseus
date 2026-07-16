@@ -47,9 +47,17 @@ function loadOperatorName() {
   }
 }
 
+function loadVoiceOutputPreference() {
+  try {
+    return window.localStorage.getItem("jarvis.voiceOutputEnabled") !== "false";
+  } catch {
+    return true;
+  }
+}
+
 export default function App() {
   const { state: jarvisState, setState: setJarvisState } = useJarvisState();
-  const [mode, setMode] = useState("world");
+  const [mode, setMode] = useState("headquarters");
   const [selectedAgentId, setSelectedAgentId] = useState("zeus");
   const [focusedAgentId, setFocusedAgentId] = useState(null);
   const [activeAgentId, setActiveAgentId] = useState(null);
@@ -59,15 +67,40 @@ export default function App() {
   const [operatorName, setOperatorName] = useState(loadOperatorName);
   const [lastResponse, setLastResponse] = useState(() => `Good evening, ${loadOperatorName()}. All eight intelligence agents are standing by.`);
   const [logs, setLogs] = useState(initialLogs);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(loadVoiceOutputPreference);
+  const [voiceStatus, setVoiceStatus] = useState({ enabled: false, active: false, permission: "prompt", engine: "browser-fallback", error: "" });
   const [localAI, setLocalAI] = useState(() => ({ status: "checking", detail: "Checking local model", ...getLocalAIConfig() }));
   const [blofin, setBlofin] = useState(() => ({ status: "checking", environment: "demo", credentialsConfigured: false, execution: "locked", snapshot: null, account: null, detail: "Checking BloFin bridge" }));
   const [agentLearning, setAgentLearning] = useState(() => getAllAgentLearning(agents.map((agent) => agent.id)));
   const taskRef = useRef(0);
   const requestRef = useRef();
+  const wakeEnabledRef = useRef(false);
   const { speak, cancel: cancelVoice, voiceName, isSpeaking: voiceSpeaking } = useCinematicVoice(voiceEnabled);
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
+
+  function standbyOrbState() {
+    return wakeEnabledRef.current ? "wake-listening" : "sleeping";
+  }
+
+  const handleVoiceStatusChange = useCallback((status) => {
+    wakeEnabledRef.current = status.enabled;
+    setVoiceStatus((current) => (
+      current.enabled === status.enabled
+      && current.active === status.active
+      && current.permission === status.permission
+      && current.engine === status.engine
+      && current.error === status.error
+        ? current
+        : status
+    ));
+    if (activeAgentId) return;
+    setJarvisState((current) => {
+      if (["wake-detected", "command-listening", "thinking", "speaking"].includes(current)) return current;
+      if (status.error && status.permission === "denied") return "error";
+      return status.enabled ? "wake-listening" : "sleeping";
+    });
+  }, [activeAgentId, setJarvisState]);
 
   const refreshBlofin = useCallback(async () => {
     setBlofin((current) => ({ ...current, status: "checking", detail: "Refreshing BloFin" }));
@@ -152,7 +185,7 @@ export default function App() {
     const finish = () => {
       if (settled || taskRef.current !== taskId) return;
       settled = true;
-      setJarvisState("idle");
+      setJarvisState(standbyOrbState());
     };
     if (voiceEnabled && speak(response, finish)) window.setTimeout(finish, Math.max(2600, response.length * 62));
     else window.setTimeout(finish, 1400);
@@ -170,7 +203,7 @@ export default function App() {
       if (settled || taskRef.current !== taskId) return;
       settled = true;
       setActiveAgentId(null);
-      setJarvisState("idle");
+      setJarvisState(standbyOrbState());
       setTaskProgress(0);
       setCurrentTask(`${agent.name} ready for the next directive`);
     };
@@ -192,8 +225,8 @@ export default function App() {
     setRundownOpen(false);
     setSelectedAgentId(agent.id);
     setFocusedAgentId(agent.id);
-    setMode("world");
-    setJarvisState("listening");
+    setMode("headquarters");
+    setJarvisState("command-listening");
     setTaskProgress(12);
     setLastResponse(`Command received. Routing to ${agent.name} on the local intelligence link.`);
     addLog("YOU", command, "#ffffff");
@@ -296,7 +329,7 @@ export default function App() {
   function inspectAgent(agent) {
     setSelectedAgentId(agent.id);
     setFocusedAgentId(agent.id);
-    setMode("world");
+    setMode("headquarters");
     setRundownOpen(false);
     setLastResponse(`${agent.name} profile selected. ${agent.personality}`);
   }
@@ -308,12 +341,12 @@ export default function App() {
     const response = `Operations overview, ${operatorName}. Mission Control is online, ${bridgeReport}, and eight specialized agents are ready. Their adaptive journals currently contain ${lessonCount} validated lessons. External publishing, financial transfers, and live trading remain approval-only.`;
     taskRef.current = taskId;
     cancelVoice();
-    setMode("world");
+    setMode("headquarters");
     setFocusedAgentId(null);
     setRundownOpen(true);
     setActiveAgentId(null);
     setCurrentTask("Compiling all-agent operations brief");
-    setJarvisState("listening");
+    setJarvisState("command-listening");
     setTaskProgress(18);
     setLastResponse("Compiling the JARVIS operations overview.");
     addLog("YOU", command, "#ffffff");
@@ -336,7 +369,7 @@ export default function App() {
       const finish = () => {
         if (settled || taskRef.current !== taskId) return;
         settled = true;
-        setJarvisState("idle");
+        setJarvisState(standbyOrbState());
         setTaskProgress(0);
         setCurrentTask("Rundown complete");
       };
@@ -356,14 +389,15 @@ export default function App() {
   }
 
   function activateCore() {
-    setJarvisState("listening");
+    setJarvisState("command-listening");
     setLastResponse("Voice link open. I am listening.");
-    window.setTimeout(() => setJarvisState((current) => current === "listening" ? "idle" : current), 2200);
+    window.setTimeout(() => setJarvisState((current) => current === "command-listening" ? standbyOrbState() : current), 2200);
   }
 
   function handleWakeWord(hasDirective = false) {
     cancelVoice();
-    setJarvisState("listening");
+    setJarvisState("wake-detected");
+    window.setTimeout(() => setJarvisState((current) => current === "wake-detected" ? "command-listening" : current), 520);
     const response = hasDirective ? `Wake word confirmed, ${operatorName}. Executing your directive.` : `Yes, ${operatorName}. I'm listening.`;
     setLastResponse(response);
     addLog("JARVIS", hasDirective ? "Wake word recognized with directive." : "Wake word recognized. Command channel open.", "#72eaff");
@@ -374,6 +408,7 @@ export default function App() {
   function toggleVoice() {
     const next = !voiceEnabled;
     setVoiceEnabled(next);
+    try { window.localStorage.setItem("jarvis.voiceOutputEnabled", String(next)); } catch { /* Session state remains available. */ }
     const message = next ? `British voice profile online. Good evening, ${operatorName}.` : "Voice output muted.";
     setLastResponse(message);
     if (next) speak(message, undefined, true);
@@ -395,17 +430,17 @@ export default function App() {
 
   return (
     <main className={`mission-shell mode-${mode}`}>
-      {mode === "ecosystem" ? (
-        <HeadquartersEcosystem agents={agents} activeAgentId={activeAgentId} jarvisState={jarvisState} onSelectAgent={inspectAgent} onOpenHeadquarters={() => changeMode("world")} onCoreActivate={activateCore} />
+      {mode === "headquarters" ? (
+        <HeadquartersEcosystem agents={agents} activeAgentId={activeAgentId} jarvisState={jarvisState} onSelectAgent={inspectAgent} onCoreActivate={activateCore} onEarthMode={() => changeMode("earth")} />
       ) : (
-        <JarvisScene mode={mode} agents={agents} activeAgentId={activeAgentId} selectedAgentId={selectedAgentId} focusedAgentId={focusedAgentId} jarvisState={jarvisState} onSelectAgent={inspectAgent} onCoreActivate={activateCore} onEarthMode={() => changeMode("earth")} onHeadquartersMode={() => changeMode("world")} />
+        <JarvisScene mode={mode} agents={agents} activeAgentId={activeAgentId} selectedAgentId={selectedAgentId} focusedAgentId={focusedAgentId} jarvisState={jarvisState} onSelectAgent={inspectAgent} onCoreActivate={activateCore} onEarthMode={() => changeMode("earth")} onHeadquartersMode={() => changeMode("headquarters")} />
       )}
       <div className="screen-vignette" aria-hidden="true" />
       <div className="scanlines" aria-hidden="true" />
-      <HudOverlay mode={mode} agents={agents} selectedAgent={selectedAgent} focusedAgentId={focusedAgentId} activeAgentId={activeAgentId} jarvisState={jarvisState} currentTask={currentTask} taskProgress={taskProgress} logs={logs} voiceEnabled={voiceEnabled} voiceName={voiceName} operatorName={operatorName} rundownOpen={rundownOpen} localAI={localAI} blofin={blofin} agentLearning={agentLearning} onToggleVoice={toggleVoice} onModeChange={changeMode} onClearFocus={() => setFocusedAgentId(null)} onRundown={() => runRundown("Open the Operations overview")} onCloseRundown={() => setRundownOpen(false)} onSelectAgent={inspectAgent} onRunAgent={focusAgent} onRefreshBlofin={() => refreshBlofin().catch(() => {})} onConnectBlofin={connectBlofin} onDisconnectBlofin={disconnectBlofin} />
-      <VoiceConsole jarvisState={jarvisState} lastResponse={lastResponse} speechActive={voiceSpeaking} onCommand={dispatch} onWake={handleWakeWord} onListeningChange={(listening) => {
-        if (listening) setJarvisState("listening");
-        else if (!activeAgentId) setJarvisState("idle");
+      <HudOverlay mode={mode} agents={agents} selectedAgent={selectedAgent} focusedAgentId={focusedAgentId} activeAgentId={activeAgentId} jarvisState={jarvisState} currentTask={currentTask} taskProgress={taskProgress} logs={logs} voiceEnabled={voiceEnabled} voiceName={voiceName} voiceStatus={voiceStatus} operatorName={operatorName} rundownOpen={rundownOpen} localAI={localAI} blofin={blofin} agentLearning={agentLearning} onToggleVoice={toggleVoice} onModeChange={changeMode} onClearFocus={() => setFocusedAgentId(null)} onRundown={() => runRundown("Open the Operations overview")} onCloseRundown={() => setRundownOpen(false)} onSelectAgent={inspectAgent} onRunAgent={focusAgent} onRefreshBlofin={() => refreshBlofin().catch(() => {})} onConnectBlofin={connectBlofin} onDisconnectBlofin={disconnectBlofin} />
+      <VoiceConsole jarvisState={jarvisState} lastResponse={lastResponse} speechActive={voiceSpeaking} onCommand={dispatch} onWake={handleWakeWord} onVoiceStatusChange={handleVoiceStatusChange} onListeningChange={(listening) => {
+        if (listening) setJarvisState("command-listening");
+        else if (!activeAgentId) setJarvisState(standbyOrbState());
       }} />
     </main>
   );
